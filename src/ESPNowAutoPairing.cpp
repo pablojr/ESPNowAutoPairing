@@ -1,7 +1,7 @@
 #include "ESPNowAutoPairing.h"
 #include <esp_wifi.h>
 
-// 静的メンバの定義
+// Static member definitions
 ESPNowAutoPairing* ESPNowAutoPairing::_instance = nullptr;
 ESPNowAutoPairing::UserRecvCallback ESPNowAutoPairing::_userRecvCb = nullptr;
 
@@ -12,21 +12,21 @@ ESPNowAutoPairing::ESPNowAutoPairing(DeviceRole role) {
     _lastSendTime = 0;
     _instance = this;
     
-    // MACアドレスを初期化
+    // Initialize MAC address
     for (int i = 0; i < 6; i++) {
         _pairedMacAddress[i] = 0xFF;
     }
 }
 
 void ESPNowAutoPairing::begin() {
-    // EEPROM初期化
+    // EEPROM initialization
     EEPROM.begin(EEPROM_SIZE);
     loadPairingData();
 
-    // WiFi設定
+    // WiFi settings
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
-    // 固定チャンネルに設定（両端末で同じ値にする）
+    // Set to a fixed channel (same value on all devices)
     const uint8_t ESPNOW_CHANNEL = 1;
     esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
     uint8_t ch = 0;
@@ -34,32 +34,32 @@ void ESPNowAutoPairing::begin() {
     esp_wifi_get_channel(&ch, &sec);
     Serial.printf("WiFi channel set to: %u\n", ch);
 
-    // ESP-NOW初期化
+    // ESP-NOW initialization
     if (esp_now_init() != ESP_OK) {
         Serial.println("ESP-NOW initialization failed");
         return;
     }
 
-    // コールバック関数の登録
+    // Registering a callback function
     esp_now_register_send_cb(OnDataSent);
     esp_now_register_recv_cb(OnDataRecv);
 
-    // ピア設定
+    // Peer configuration
     memset(&_peerInfo, 0, sizeof(_peerInfo));
     
     if (_pairingStatus == PAIRING_PAIRED) {
-        // ペアリング済みの場合、保存されたMACアドレスを使用
+        // If paired previously, use the stored MAC address
         memcpy(_peerInfo.peer_addr, _pairedMacAddress, 6);
         Serial.println("Using paired MAC address");
     } else {
-        // 未ペアリングの場合、ブロードキャスト用に設定
+        // If not paired, set for broadcast
         for (int i = 0; i < 6; ++i) {
             _peerInfo.peer_addr[i] = 0xFF;
         }
         Serial.println("No pairing data found. Ready for pairing.");
     }
 
-    // 明示的にチャンネルを指定
+    // Explicitly specify the channel
     _peerInfo.channel = 1;
     _peerInfo.encrypt = false;
 
@@ -96,13 +96,13 @@ uint8_t* ESPNowAutoPairing::getPairedMacAddress() {
 }
 
 void ESPNowAutoPairing::clearPairingData() {
-    // ペアリングデータをクリア
+    // Clear pairing data
     for (int i = 0; i < 6; i++) {
         _pairedMacAddress[i] = 0xFF;
     }
     _pairingStatus = PAIRING_NONE;
     
-    // EEPROMに保存
+    // Store pairing data in EEPROM
     savePairingData();
     
     Serial.println("Pairing data cleared");
@@ -137,12 +137,12 @@ void ESPNowAutoPairing::savePairingData() {
 }
 
 void ESPNowAutoPairing::addPeer(const uint8_t* mac_addr) {
-    // 既存ピアを削除（対象MAC）
+    // Delete existing peer (target MAC)
     esp_now_del_peer(mac_addr);
-    // 新規ピア設定
+    // New peer configuration
     memset(&_peerInfo, 0, sizeof(_peerInfo));
     memcpy(_peerInfo.peer_addr, mac_addr, 6);
-    _peerInfo.channel = 1;  // 固定チャンネルに合わせる
+    _peerInfo.channel = ESPNOW_CHANNEL;          // Use a fixed channel
     _peerInfo.encrypt = false;
 
     esp_err_t st = esp_now_add_peer(&_peerInfo);
@@ -182,15 +182,15 @@ void ESPNowAutoPairing::OnDataRecv(const uint8_t *mac_addr, const uint8_t *incom
         if (_instance->_pairingMode) {
             if (_instance->_role == SLAVE && msg.type == PAIR_REQUEST) {
                 Serial.println("Received PAIR_REQUEST");
-                // PAIR_REQUESTを受信したら、PAIR_RESPONSEを返す
+                // When PAIR_REQUEST is received, return PAIR_RESPONSE
                 pairing_message_t responseMsg;
                 responseMsg.type = PAIR_RESPONSE;
                 
-                // 自分のMACアドレスを取得
+                //Get your MAC address
                 uint8_t myMac[6];
                 WiFi.macAddress(myMac);
                 memcpy(responseMsg.mac, myMac, 6);
-                // 送信先ピアを追加（チャンネル合わせ）
+                // Add a destination peer (channel matching)
                 _instance->addPeer(mac_addr);
                 esp_err_t s = esp_now_send(mac_addr, (uint8_t *) &responseMsg, sizeof(responseMsg));
                 Serial.println("Sent PAIR_RESPONSE");
@@ -200,7 +200,7 @@ void ESPNowAutoPairing::OnDataRecv(const uint8_t *mac_addr, const uint8_t *incom
                 
             } else if (_instance->_role == MASTER && msg.type == PAIR_RESPONSE) {
                 Serial.println("Received PAIR_RESPONSE");
-                // PAIR_RESPONSEを受信したら、MACアドレスを保存してPAIR_CONFIRMを返す
+                // If PAIR_RESPONSE is received, save the MAC address and return PAIR_CONFIRM.
                 memcpy(_instance->_pairedMacAddress, msg.mac, 6);
                 _instance->_pairingStatus = PAIRING_PAIRED;
                 _instance->savePairingData();
@@ -210,11 +210,11 @@ void ESPNowAutoPairing::OnDataRecv(const uint8_t *mac_addr, const uint8_t *incom
                 pairing_message_t confirmMsg;
                 confirmMsg.type = PAIR_CONFIRM;
                 
-                // 自分のMACアドレスを取得
+                // Get your MAC address
                 uint8_t myMac[6];
                 WiFi.macAddress(myMac);
                 memcpy(confirmMsg.mac, myMac, 6);
-                // 送信先ピアを追加してから送信
+                // Add a destination peer before sending
                 _instance->addPeer(_instance->_pairedMacAddress);
                 esp_err_t s2 = esp_now_send(mac_addr, (uint8_t *) &confirmMsg, sizeof(confirmMsg));
                 Serial.println("Sent PAIR_CONFIRM");
@@ -225,7 +225,7 @@ void ESPNowAutoPairing::OnDataRecv(const uint8_t *mac_addr, const uint8_t *incom
                 
             } else if (_instance->_role == SLAVE && msg.type == PAIR_CONFIRM) {
                 Serial.println("Received PAIR_CONFIRM");
-                // PAIR_CONFIRMを受信したら、MACアドレスを保存してペアリング完了
+                // Once PAIR_CONFIRM is received, save the MAC address and pairing is complete.
                 memcpy(_instance->_pairedMacAddress, msg.mac, 6);
                 _instance->_pairingStatus = PAIRING_PAIRED;
                 _instance->savePairingData();
@@ -237,7 +237,8 @@ void ESPNowAutoPairing::OnDataRecv(const uint8_t *mac_addr, const uint8_t *incom
         }
     }
 
-    // ライブラリ内部処理の後、ユーザーコールバックがあれば転送
+    // After internal library processing, if there is a user callback
+    // it will be forwarded
     if (_userRecvCb) {
         _userRecvCb(mac_addr, incomingData, data_len);
     }

@@ -6,22 +6,22 @@
 #include <WiFi.h>
 #include <EEPROM.h>
 
-#define EEPROM_SIZE 7 // MACアドレス6バイト + ペアリング状態1バイト
+#define EEPROM_SIZE 7       // MAC address 6 bytes + pairing status 1 byte
 
-// ペアリングメッセージ構造体
+// Pairing message structure
 typedef struct {
-    uint8_t type;        // メッセージタイプ
-    uint8_t mac[6];      // 送信者のMACアドレス
-    uint8_t data[8];     // 追加データ
+    uint8_t type;           // Message type
+    uint8_t mac[6];         // Sender's MAC address
+    uint8_t data[8];        // Additional data
 } pairing_message_t;
 
-// メッセージタイプ定義
+// Message type definitions
 #define PAIR_REQUEST  0x01
 #define PAIR_RESPONSE 0x02
 #define PAIR_CONFIRM  0x03
 #define NES_COMMAND   0x10
 
-// ペアリング状態
+// Pairing status
 #define PAIRING_NONE    0x00
 #define PAIRING_PAIRED  0x01
 
@@ -41,7 +41,7 @@ public:
     void clearPairingData();
     void sendData(uint8_t* data, size_t len);
 
-    // ユーザー受信コールバックを登録（ライブラリ内部処理の後に呼ばれる）
+    // Register a user reception callback (called after the library's internal processing)
     typedef void (*UserRecvCallback)(const uint8_t *mac_addr,
                                      const uint8_t *incomingData,
                                      int data_len);
@@ -60,11 +60,11 @@ private:
     void addPeer(const uint8_t* mac_addr);
     void deletePeer(const uint8_t* mac_addr);
 
-    // ESP-NOWコールバック関数
+    // ESP-NOW callback functions
     static void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
     static void OnDataRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int data_len);
 
-    // 外部からアクセスできるようにするためのフレンド関数または静的メンバ
+    // Friend functions or static members for external accessibility
     static ESPNowAutoPairing* _instance;
     static UserRecvCallback _userRecvCb;
 };
